@@ -1,5 +1,8 @@
 const graphql = require('graphql');
 
+const Course  = require('../models/course.model');
+const Teacher = require('../models/teacher.model');
+
 const {
   GraphQLObjectType,
   GraphQLID,
@@ -10,27 +13,9 @@ const {
   GraphQLList
 } = graphql;
 
-const courses = [
-  { id: '1', name: 'Patrones de Diseño en Java', language: 'Java', date: '2019', teacherId: '1' },
-  { id: '2', name: 'Patrones de Diseño en JavaScript', language: 'JavaScript', date: '2019', teacherId: '2' },
-  { id: '3', name: 'Front-End Angular', language: 'TypeScript', date: '2019', teacherId: '3' },
-  { id: '4', name: 'Node JS', language: 'JavaScript', date: '2019', teacherId: '3' },
-  { id: '5', name: 'Bases de Datos', language: 'SQL', date: '2019', teacherId: '4' }
-];
-
-const teachers = [
-  { id: '1', name: 'Javier Vazquez', age: 40, active: true, date: '2019' },
-  { id: '2', name: 'Juan De la Torre', age: 33, active: true, date: '2019' },
-  { id: '3', name: 'Fernando Herrera', age: 35, active: true, date: '2019' },
-  { id: '4', name: 'Pablo Tilota', age: 52, active: true, date: '2019' }
-];
-
-const users = [
-  { id: '1', name: 'Acxel', email: 'acxel@correo.com', password: '123', date: '2019' },
-  { id: '2', name: 'Test1', email: 'test1@correo.com', password: '123', date: '2019' },
-  { id: '3', name: 'Test2', email: 'test2@correo.com', password: '123', date: '2019' }
-];
-
+///////////////////////////////////////////////////////////////////////////////////////
+// <= COURSE TYPE =>
+///////////////////////////////////////////////////////////////////////////////////////
 const CourseType = new GraphQLObjectType({
   name: "Course",
   fields: () => ({
@@ -41,12 +26,15 @@ const CourseType = new GraphQLObjectType({
     teacher: { 
       type: TeacherType,
       resolve(parent, args) {
-        return teachers.find(t => t.id === parent.teacherId);
+        return Teacher.findById(parent.teacherId);
       }
     }
   })
 });
 
+///////////////////////////////////////////////////////////////////////////////////////
+// <= TEACHER TYPE =>
+///////////////////////////////////////////////////////////////////////////////////////
 const TeacherType = new GraphQLObjectType({
   name: "Teacher",
   fields: () => ({
@@ -58,12 +46,15 @@ const TeacherType = new GraphQLObjectType({
     course: {
       type: new GraphQLList(CourseType),
       resolve(parent, args) {
-        return courses.filter(c => c.teacherId === parent.id);
+        return Course.find({ teacherId: parent.id });
       }
     }
   })
 });
 
+///////////////////////////////////////////////////////////////////////////////////////
+// <= USER TYPE =>
+///////////////////////////////////////////////////////////////////////////////////////
 const UserType = new GraphQLObjectType({
   name: "User",
   fields: () => ({
@@ -75,8 +66,11 @@ const UserType = new GraphQLObjectType({
   })
 });
 
+///////////////////////////////////////////////////////////////////////////////////////
+// <= QUERYS =>
+///////////////////////////////////////////////////////////////////////////////////////
 const rootQuery = new GraphQLObjectType({
-  name: "RootQueryType",
+  name: "RootQuery",
   fields: {
     course: {
       type: CourseType,
@@ -84,13 +78,13 @@ const rootQuery = new GraphQLObjectType({
         id: { type: GraphQLString }
       },
       resolve(parent, args) {
-        return courses.find(c => c.id === args.id);
+        return Course.findOne({ _id: args.id });
       }
     },
     courses: {
       type: new GraphQLList(CourseType),
       resolve(parent, args) {
-        return courses;
+        return Course.find();
       }
     },
     teacher: {
@@ -99,13 +93,13 @@ const rootQuery = new GraphQLObjectType({
         name: { type: GraphQLString }
       },
       resolve(parent, args) {
-        return teachers.find(t => t.name === args.name);
+        return Teacher.findOne({ name: args.name });
       }
     },
     teachers: {
       type: new GraphQLList(TeacherType),
       resolve() {
-        return teachers;
+        return Teacher.find();
       }
     },
     user: {
@@ -126,6 +120,111 @@ const rootQuery = new GraphQLObjectType({
   }
 });
 
+///////////////////////////////////////////////////////////////////////////////////////
+// <= MUTATIONS =>
+///////////////////////////////////////////////////////////////////////////////////////
+const mutation = new GraphQLObjectType({
+  name: 'Mutation',
+  fields: {
+    addCourse: {
+      type: CourseType,
+      args: {
+        name: { type: GraphQLString },
+        language: { type: GraphQLString },
+        date: { type: GraphQLString },
+        teacherId: { type: GraphQLID }
+      },
+      resolve(parent, args) {
+        let course = new Course({
+          name: args.name,
+          language: args.language,
+          date: args.date,
+          teacherId: args.teacherId
+        });
+
+        return course.save();
+      }
+    },
+    updateCourse: {
+      type: CourseType,
+      args: {
+        id: { type: GraphQLID },
+        name: { type: GraphQLString },
+        language: { type: GraphQLString },
+        date: { type: GraphQLString },
+        teacherId: { type: GraphQLID }
+      },
+      resolve(parent, args) {
+        return Course.findByIdAndUpdate(args.id, {
+          name: args.name,
+          language: args.language,
+          date: args.date,
+          teacherId: args.teacherId
+        }, { new: true });
+      }
+    },
+    deleteCourse: {
+      type: CourseType,
+      args: {
+        id: { type: GraphQLID }
+      },
+      resolve(parent, args) {
+        return Course.findByIdAndDelete(args.id);
+      }
+    },
+    addTeacher: {
+      type: TeacherType,
+      args: {
+        name: { type: GraphQLString },
+        age: { type: GraphQLInt },
+        active: { type: GraphQLBoolean },
+        date: { type: GraphQLString }
+      },
+      resolve(parent, args) {
+        let teacher = new Teacher({
+          name: args.name,
+          age: args.age,
+          active: args.active,
+          date: args.date
+        });
+
+        return teacher.save();
+      }
+    },
+    updateTeacher: {
+      type: TeacherType,
+      args: {
+        id: { type: GraphQLID },
+        name: { type: GraphQLString },
+        age: { type: GraphQLInt },
+        active: { type: GraphQLBoolean },
+        date: { type: GraphQLString }
+      },
+      resolve(parent, args) {
+        return Teacher.findByIdAndUpdate(args.id, {
+          name: args.name,
+          age: args.age,
+          active: args.active,
+          date: args.date
+        }, { new: true });
+      }
+    },
+    deleteTeacher: {
+      type: TeacherType,
+      args: {
+        id: { type: GraphQLID }
+      },
+      resolve(parent, args) {
+        return Teacher.findByIdAndDelete(args.id);
+      }
+    }
+  }
+});
+
+///////////////////////////////////////////////////////////////////////////////////////
+// <= EXPORTS =>
+///////////////////////////////////////////////////////////////////////////////////////
 module.exports = new GraphQLSchema({
-  query: rootQuery
+  query: rootQuery,
+  mutation: mutation
 });
