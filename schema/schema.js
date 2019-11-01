@@ -1,7 +1,10 @@
 const graphql = require('graphql');
+const bcrypt  = require('bcrypt');
 
 const Course  = require('../models/course.model');
 const Teacher = require('../models/teacher.model');
+const User    = require('../models/user.model');
+const auth    = require('../utils/auth');
 
 const {
   GraphQLObjectType,
@@ -67,6 +70,18 @@ const UserType = new GraphQLObjectType({
 });
 
 ///////////////////////////////////////////////////////////////////////////////////////
+// <= MESSAGE TYPE =>
+///////////////////////////////////////////////////////////////////////////////////////
+const MessageType = new GraphQLObjectType({
+  name: "Message",
+  fields: () => ({
+    message: { type: GraphQLString },
+    token: { type: GraphQLString },
+    error: { type: GraphQLString }
+  })
+});
+
+///////////////////////////////////////////////////////////////////////////////////////
 // <= QUERYS =>
 ///////////////////////////////////////////////////////////////////////////////////////
 const rootQuery = new GraphQLObjectType({
@@ -77,13 +92,21 @@ const rootQuery = new GraphQLObjectType({
       args: {
         id: { type: GraphQLString }
       },
-      resolve(parent, args) {
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+        
         return Course.findOne({ _id: args.id });
       }
     },
     courses: {
       type: new GraphQLList(CourseType),
-      resolve(parent, args) {
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+
         return Course.find();
       }
     },
@@ -92,13 +115,21 @@ const rootQuery = new GraphQLObjectType({
       args: {
         name: { type: GraphQLString }
       },
-      resolve(parent, args) {
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+
         return Teacher.findOne({ name: args.name });
       }
     },
     teachers: {
       type: new GraphQLList(TeacherType),
-      resolve() {
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+
         return Teacher.find();
       }
     },
@@ -107,14 +138,22 @@ const rootQuery = new GraphQLObjectType({
       args: {
         email: { type: GraphQLString }
       },
-      resolve(parent, args) {
-        return users.find(u => u.email === args.email);
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+
+        return User.findOne({ email: args.email });
       }
     },
     users: {
       type: GraphQLList(UserType),
-      resolve() {
-        return users;
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+
+        return User.find();
       }
     }
   }
@@ -134,7 +173,11 @@ const mutation = new GraphQLObjectType({
         date: { type: GraphQLString },
         teacherId: { type: GraphQLID }
       },
-      resolve(parent, args) {
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }     
+
         let course = new Course({
           name: args.name,
           language: args.language,
@@ -154,7 +197,11 @@ const mutation = new GraphQLObjectType({
         date: { type: GraphQLString },
         teacherId: { type: GraphQLID }
       },
-      resolve(parent, args) {
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+
         return Course.findByIdAndUpdate(args.id, {
           name: args.name,
           language: args.language,
@@ -168,7 +215,11 @@ const mutation = new GraphQLObjectType({
       args: {
         id: { type: GraphQLID }
       },
-      resolve(parent, args) {
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+
         return Course.findByIdAndDelete(args.id);
       }
     },
@@ -180,7 +231,11 @@ const mutation = new GraphQLObjectType({
         active: { type: GraphQLBoolean },
         date: { type: GraphQLString }
       },
-      resolve(parent, args) {
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+
         let teacher = new Teacher({
           name: args.name,
           age: args.age,
@@ -200,7 +255,11 @@ const mutation = new GraphQLObjectType({
         active: { type: GraphQLBoolean },
         date: { type: GraphQLString }
       },
-      resolve(parent, args) {
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+
         return Teacher.findByIdAndUpdate(args.id, {
           name: args.name,
           age: args.age,
@@ -214,8 +273,92 @@ const mutation = new GraphQLObjectType({
       args: {
         id: { type: GraphQLID }
       },
-      resolve(parent, args) {
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+        
         return Teacher.findByIdAndDelete(args.id);
+      }
+    },
+    addUser: {
+      type: MessageType,
+      args: {
+        name: { type: GraphQLString },
+        email: { type: GraphQLString },
+        password: { type: GraphQLString },
+        date: { type: GraphQLString },
+      },
+      async resolve(parent, args) {
+        let user = await User.findOne({ email: args.email });
+
+        if (user) return { error: 'El usuario ya existe' };
+
+        user = new User({
+          name: args.name,
+          email: args.email,
+          password: bcrypt.hashSync(args.password, 10),
+          date: args.date
+        });
+
+        user.save();
+        return { message: 'Usuario creado' };
+      }
+    },
+    login: {
+      type: MessageType,
+      args: {
+        email: { type: GraphQLString },
+        password: { type: GraphQLString }
+      },
+      async resolve(parent, args) {
+        let result = await auth.login(args.email, args.password, process.env.SEED_GRAPHQL_COURSES);
+        return {
+          message: result.message,
+          error: result.error,
+          token: result.token
+        };
+      }
+    },
+    updateUser: {
+      type: UserType,
+      args: {
+        id: { type: GraphQLID },
+        name: { type: GraphQLString },
+        email: { type: GraphQLString },
+        date: { type: GraphQLString },
+      },
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+
+        if (args.id === context.user._id) {
+          return User.findOneAndUpdate(args.id, {
+            name: args.name,
+            email: args.email,
+            date: args.date
+          }, { new: true });
+        } else {
+          throw new Error('No puedes actualizar otro usuario');
+        }
+      } 
+    },
+    deleteUser: {
+      type: UserType,
+      args: {
+        id: { type: GraphQLID }
+      },
+      resolve(parent, args, context) {
+        if (!context.user.auth) {
+          throw new Error('Token invalido');
+        }
+
+        if (args.id === context.user._id) {
+          return User.findByIdAndDelete(args.id);
+        } else {
+          throw new Error('No puedes eliminar a otros usuarios');
+        }
       }
     }
   }
